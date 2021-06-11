@@ -6,6 +6,7 @@
 define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
     return function (frame) {
         var p,
+            servers=["a", "b", "c", "rr"],
             player = frame.player(),
             layout = frame.layout(),
             model = function() { return frame.model(); },
@@ -19,11 +20,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
             model().nodeLabelVisible = true;
             model().clear();
             model().clients.create("x");
-
-            model().nodes.create("a");
-            model().nodes.create("b");
-            model().nodes.create("c");
-            model().nodes.create("rr");
+            for (let i=0; i < servers.length; i++ ) { model().nodes.create(servers[i]); }
             client("x")._url="client.local"; 
             node("b")._state = "leader";
             node("a")._state = "follower";
@@ -43,7 +40,6 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
         })
         .after(1000, function () {
             frame.snapshot();
-            var servers=["a", "b", "c", "rr"];
             for (let i=0; i < servers.length; i++ ) {
                 model().send(client("x"), node(servers[i]), {type:"Query"}, function () {
                     model().send(node(servers[i]), client("x"), {type:"Results"});

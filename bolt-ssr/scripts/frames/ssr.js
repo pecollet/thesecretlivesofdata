@@ -6,6 +6,7 @@
 define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
     return function (frame) {
         var p,
+            servers=["a", "b", "c", "rr"],
             player = frame.player(),
             layout = frame.layout(),
             model = function() { return frame.model(); },
@@ -13,16 +14,21 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
             lb = function(id) { return frame.model().lbs.find(id); },
             node = function(id) { return frame.model().nodes.find(id); },
             partition = function(id) { return frame.model().partitions.find(id); },
-            wait = function() { var self = this; model().controls.show(function() { player.play(); self.stop(); }); };
+            wait = function() { var self = this; model().controls.show(function() { player.play(); self.stop(); }); },
+            add_routing_table = function(id, routing_address, color) { 
+                        client(id)._log=[];
+                        client(id)._log.push(new LogEntry(model(), 1, color, "READ="+routing_address));
+                        client(id)._log.push(new LogEntry(model(), 2, color, "WRITE="+routing_address));
+                        client(id)._log.push(new LogEntry(model(), 3, color, "ROUTE="+routing_address)); 
+                    },
+            reset_addresses = function() { for (let i=0; i < servers.length; i++ ) { node(servers[i])._address = servers[i]+".domain.com"; } };
 
         frame.after(1, function() {
             model().nodeLabelVisible = true;
             model().clear();
             model().clients.create("x");
-            model().nodes.create("a");
-            model().nodes.create("b");
-            model().nodes.create("c");
-            model().nodes.create("rr");
+            for (let i=0; i < servers.length; i++ ) { model().nodes.create(servers[i]); }
+
             layout.invalidate();
             p = model().partitions.create("-");
             p.y1 = Math.min.apply(null, model().nodes.toArray().map(function(node) { return node.y;})) - 20;
@@ -51,7 +57,6 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
         .after(100, wait).indefinite()
         .after(100, function () {
             frame.snapshot();
-            var servers=["a", "b", "c", "rr"];
             for (let i=0; i < servers.length; i++ ) {
                 model().send(lb("LB"), node(servers[i]), {type:"health"}, function () {
                     model().send(node(servers[i]), lb("LB"), {type:"health_ok"}, function () {
@@ -68,11 +73,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
         .after(1000, wait).indefinite()
         .after(100, function () {
             frame.snapshot();
-            
-            node("a")._address = "a.domain.com";
-            node("b")._address = "b.domain.com";
-            node("c")._address = "c.domain.com";
-            node("rr")._address = "rr.domain.com";
+            reset_addresses();
             model().subtitle = '<h2>Server-side routing must be configured on each Neo4j instance : </h2>'
                         +'<h5><em>dbms.routing.enabled=true</em></h5>'
                         +'<h5><em>dbms.routing.default_router=SERVER</em></h5>'
@@ -83,10 +84,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
 
         .after(100, function () {
             frame.snapshot();
-            node("a")._address = "a.domain.com";
-            node("b")._address = "b.domain.com";
-            node("c")._address = "c.domain.com";
-            node("rr")._address = "rr.domain.com";
+            reset_addresses();
             lb("LB")._url = "lb.ext";
             client("x")._url="neo4j://lb.ext:7687"; 
             model().send(client("x"), lb("LB"), {type:"Query"});
@@ -97,29 +95,23 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
         .after(100, wait).indefinite()
         .after(100, function () {
             frame.snapshot();
-            model().send(lb("LB"), node("a"), {type:"Query"}, function () {
-                model().send(node("a"), lb("LB"), {type:"Results"}, function () {   
+            var random = Math.floor(Math.random() * 4);
+            model().send(lb("LB"), node(servers[random]), {type:"Query"}, function () {
+                model().send(node(servers[random]), lb("LB"), {type:"Results"}, function () {   
                     model().send(lb("LB"), client("x"), {type:"Results"}, function () {   
-                        client("x")._log=[];
-                        client("x")._log.push(new LogEntry(model(), 1, "black", "READ=lb.ext"));
-                        client("x")._log.push(new LogEntry(model(), 2, "black", "WRITE=lb.ext"));
-                        client("x")._log.push(new LogEntry(model(), 3, "black", "ROUTE=lb.ext"));
+                        add_routing_table("x", "lb.ext", "black");
                         layout.invalidate();
                     });
                 });
              });
-            model().subtitle = '<h2>The Load Balancer redirects to one of the healthy servers, which returns a routing table.</h2>'
+            model().subtitle = '<h2>The Load Balancer redirects to one of the healthy instances, which returns a routing table.</h2>'
                            + model().controls.html();
             layout.invalidate();
         })
         .after(100, wait).indefinite()
         .after(100, function () {
             frame.snapshot();
-            client("x")._log=[];
-            client("x")._log.push(new LogEntry(model(), 1, "red", "READ=lb.ext"));
-            client("x")._log.push(new LogEntry(model(), 2, "red", "WRITE=lb.ext"));
-            client("x")._log.push(new LogEntry(model(), 3, "red", "ROUTE=lb.ext"));
-
+            add_routing_table("x", "lb.ext", "red");
             model().subtitle = '<h2>With Server-Side Routing, instead of the usual advertised addresses, the routing table only contains the address from the initial connection URL.</h2>'
                            + model().controls.html();
             layout.invalidate();
@@ -127,10 +119,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
         .after(100, wait).indefinite()
         .after(100, function () {
             frame.snapshot();
-            client("x")._log=[];
-            client("x")._log.push(new LogEntry(model(), 1, "black", "READ=lb.ext"));
-            client("x")._log.push(new LogEntry(model(), 2, "black", "WRITE=lb.ext"));
-            client("x")._log.push(new LogEntry(model(), 3, "black", "ROUTE=lb.ext"));
+            add_routing_table("x", "lb.ext", "black");
             client("x")._value="R";
             model().send(client("x"), lb("LB"), {type:"Query", mode:"R"});
             model().subtitle = '<h2>As a consequence, regardless of the driver\'s selected <em>Access Mode</em> (Write/Read),</h2>'
@@ -143,7 +132,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
             frame.snapshot();
             model().send(lb("LB"), node("b"), {type:"Query", mode:"R"});
             model().subtitle = '<h2>The Load Balancer, having no knowledge of instance roles in the clusters,</h2>'
-                           +'<h2>simply directs the query to any server <sup>*</sup></h2><h5>* according to its own load-balancing policy.</h5>'
+                           +'<h2>simply directs the query to any cluster member <sup>*</sup></h2><h5>* according to its own load-balancing policy.</h5>'
                            + model().controls.html();
             layout.invalidate();
         })

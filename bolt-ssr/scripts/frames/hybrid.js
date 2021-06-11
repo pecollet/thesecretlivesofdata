@@ -6,6 +6,7 @@
 define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
     return function (frame) {
         var p, p2,
+            servers=["a", "b", "c", "rr"],
             player = frame.player(),
             layout = frame.layout(),
             model = function() { return frame.model(); },
@@ -13,6 +14,12 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
             lb = function(id) { return frame.model().lbs.find(id); },
             node = function(id) { return frame.model().nodes.find(id); },
             partition = function(id) { return frame.model().partitions.find(id); },
+            add_routing_table = function(id, routing_address, color) { 
+                        client(id)._log=[];
+                        client(id)._log.push(new LogEntry(model(), 1, color, "READ="+routing_address));
+                        client(id)._log.push(new LogEntry(model(), 2, color, "WRITE="+routing_address));
+                        client(id)._log.push(new LogEntry(model(), 3, color, "ROUTE="+routing_address)); 
+                    },
             wait = function() { var self = this; model().controls.show(function() { player.play(); self.stop(); }); };
 
         frame.after(1, function() {
@@ -68,16 +75,15 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
             p.x1 = node("a").x;
             p.x2 = client("local").x - 20;
 
+            
             client("local")._url="neo4j://lb.int:7687"; 
             client("external")._url="neo4j://lb.ext:7687"; 
             model().send(client("local"), lb("LB-int"), {type:"Query"},  function () {
                 model().send(lb("LB-int"), node("b"), {type:"Query"}, function () {
                     model().send(node("b"), lb("LB-int"), {type:"Results"}, function () {   
-                        model().send(lb("LB-int"), client("local"), {type:"Results"}, function () {   
-                            client("local")._log=[];
-                            client("local")._log.push(new LogEntry(model(), 1, "black", "READ=lb.int"));
-                            client("local")._log.push(new LogEntry(model(), 2, "black", "WRITE=lb.int"));
-                            client("local")._log.push(new LogEntry(model(), 3, "black", "ROUTE=lb.int"));
+                        model().send(lb("LB-int"), client("local"), {type:"Results"}, function () {  
+                            add_routing_table("local", "lb.int", "black"); 
+
                             client("local")._value="W";
                             model().send(client("local"), lb("LB-int"), {type:"Query", mode:"W"}, function () {   
                                 model().send(lb("LB-int"), node("a"), {type:"Query", mode:"W"}, function () {
@@ -158,10 +164,7 @@ define(["../../../bolt/scripts/model/log_entry"], function (LogEntry) {
                 model().send(lb("LB-ext"), node("c"), {type:"Query"}, function () {
                     model().send(node("c"), lb("LB-ext"), {type:"Results"}, function () {   
                         model().send(lb("LB-ext"), client("external"), {type:"Results"}, function () {   
-                            client("external")._log=[];
-                            client("external")._log.push(new LogEntry(model(), 1, "black", "READ=lb.ext"));
-                            client("external")._log.push(new LogEntry(model(), 2, "black", "WRITE=lb.ext"));
-                            client("external")._log.push(new LogEntry(model(), 3, "black", "ROUTE=lb.ext"));
+                            add_routing_table("external", "lb.ext", "black"); 
                             client("external")._value="W";
                             model().send(client("external"), lb("LB-ext"), {type:"Query", mode:"W"}, function () {   
                                 model().send(lb("LB-ext"), node("a"), {type:"Query", mode:"W"}, function () {
